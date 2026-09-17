@@ -139,7 +139,7 @@ final class YearMonthDayComparisonTests: XCTestCase {
 
 final class YearMonthDayMonthCursorTests: XCTestCase {
 
-    func test_nextMonth_incrementsMonthAndResetsDay() {
+    func test_nextMonth_incrementsMonthAndKeepsDay() {
         // Arrange
         var cursor = YearMonthDay(year: 2025, month: 1, day: 15)
 
@@ -147,25 +147,69 @@ final class YearMonthDayMonthCursorTests: XCTestCase {
         cursor.nextMonth()
 
         // Assert
-        XCTAssertEqual(cursor, YearMonthDay(year: 2025, month: 2, day: 1))
+        XCTAssertEqual(cursor, YearMonthDay(year: 2025, month: 2, day: 15))
     }
 
     func test_nextMonth_rollsOverToJanuaryOfNextYear() {
         var cursor = YearMonthDay(year: 2025, month: 12, day: 31)
         cursor.nextMonth()
-        XCTAssertEqual(cursor, YearMonthDay(year: 2026, month: 1, day: 1))
+        XCTAssertEqual(cursor, YearMonthDay(year: 2026, month: 1, day: 31))
     }
 
-    func test_prevMonth_decrementsMonthAndResetsDay() {
+    func test_nextMonth_clampsDayToShorterMonth() {
+        // 1/31 -> 2/28 (평년)
+        var cursor = YearMonthDay(year: 2025, month: 1, day: 31)
+        cursor.nextMonth()
+        XCTAssertEqual(cursor, YearMonthDay(year: 2025, month: 2, day: 28))
+
+        // 3/31 -> 4/30
+        var other = YearMonthDay(year: 2025, month: 3, day: 31)
+        other.nextMonth()
+        XCTAssertEqual(other, YearMonthDay(year: 2025, month: 4, day: 30))
+    }
+
+    func test_nextMonth_clampsDayToFebruaryOfLeapYear() {
+        var cursor = YearMonthDay(year: 2024, month: 1, day: 31)
+        cursor.nextMonth()
+        XCTAssertEqual(cursor, YearMonthDay(year: 2024, month: 2, day: 29))
+    }
+
+    func test_prevMonth_decrementsMonthAndKeepsDay() {
         var cursor = YearMonthDay(year: 2025, month: 3, day: 15)
         cursor.prevMonth()
-        XCTAssertEqual(cursor, YearMonthDay(year: 2025, month: 2, day: 1))
+        XCTAssertEqual(cursor, YearMonthDay(year: 2025, month: 2, day: 15))
     }
 
     func test_prevMonth_rollsOverToDecemberOfPreviousYear() {
         var cursor = YearMonthDay(year: 2025, month: 1, day: 15)
         cursor.prevMonth()
-        XCTAssertEqual(cursor, YearMonthDay(year: 2024, month: 12, day: 1))
+        XCTAssertEqual(cursor, YearMonthDay(year: 2024, month: 12, day: 15))
+    }
+
+    func test_prevMonth_clampsDayToShorterMonth() {
+        // 3/31 -> 2/28 (평년)
+        var cursor = YearMonthDay(year: 2025, month: 3, day: 31)
+        cursor.prevMonth()
+        XCTAssertEqual(cursor, YearMonthDay(year: 2025, month: 2, day: 28))
+
+        // 5/31 -> 4/30
+        var other = YearMonthDay(year: 2025, month: 5, day: 31)
+        other.prevMonth()
+        XCTAssertEqual(other, YearMonthDay(year: 2025, month: 4, day: 30))
+    }
+
+    func test_prevMonth_clampsDayToFebruaryOfLeapYear() {
+        var cursor = YearMonthDay(year: 2024, month: 3, day: 31)
+        cursor.prevMonth()
+        XCTAssertEqual(cursor, YearMonthDay(year: 2024, month: 2, day: 29))
+    }
+
+    func test_monthCursor_roundTripRestoresClampedDayOnly() {
+        // 1/31 -> 2/28 -> 3/28: 한 번 잘린 day는 복원되지 않는다(값 타입의 단순 규칙).
+        var cursor = YearMonthDay(year: 2025, month: 1, day: 31)
+        cursor.nextMonth()
+        cursor.nextMonth()
+        XCTAssertEqual(cursor, YearMonthDay(year: 2025, month: 3, day: 28))
     }
 
     func test_prevMonth_doesNotMoveBefore1970() {
@@ -175,8 +219,52 @@ final class YearMonthDayMonthCursorTests: XCTestCase {
         // Act
         cursor.prevMonth()
 
-        // Assert: 하한에 도달하면 day 초기화조차 일어나지 않는다.
+        // Assert
         XCTAssertEqual(cursor, YearMonthDay(year: 1970, month: 1, day: 15))
+    }
+}
+
+final class YearMonthDayLastDayTests: XCTestCase {
+
+    func test_lastDay_returnsMonthLengthForCommonYear() {
+        let expected = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        for (index, days) in expected.enumerated() {
+            XCTAssertEqual(
+                YearMonthDay.lastDay(year: 2025, month: index + 1),
+                days,
+                "2025-\(index + 1)월의 마지막 날이 다르다")
+        }
+    }
+
+    func test_lastDay_returns29ForFebruaryOfLeapYear() {
+        XCTAssertEqual(YearMonthDay.lastDay(year: 2024, month: 2), 29)
+        XCTAssertEqual(YearMonthDay.lastDay(year: 2000, month: 2), 29)
+    }
+
+    func test_lastDay_returns28ForCenturyNonLeapYear() {
+        XCTAssertEqual(YearMonthDay.lastDay(year: 1900, month: 2), 28)
+        XCTAssertEqual(YearMonthDay.lastDay(year: 2100, month: 2), 28)
+    }
+
+    func test_lastDay_matchesCalendarRange() {
+        // Arrange: Gregorian Calendar 결과와 교차 검증
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+
+        for year in [1970, 1999, 2000, 2024, 2025, 2100] {
+            for month in 1...12 {
+                let reference = calendar.range(
+                    of: .day,
+                    in: .month,
+                    for: DateComponents(calendar: calendar, year: year, month: month, day: 1).date!)!.count
+
+                // Act & Assert
+                XCTAssertEqual(
+                    YearMonthDay.lastDay(year: year, month: month),
+                    reference,
+                    "\(year)-\(month)")
+            }
+        }
     }
 }
 
@@ -205,5 +293,60 @@ final class YearMonthDayDateConversionTests: XCTestCase {
 
         // Assert
         XCTAssertEqual(restored, ymd)
+    }
+}
+
+final class YearMonthDayValidityTests: XCTestCase {
+
+    func test_isValidDate_trueForRealDates() {
+        XCTAssertTrue(YearMonthDay(year: 2025, month: 3, day: 26).isValidDate)
+        XCTAssertTrue(YearMonthDay(year: 2024, month: 2, day: 29).isValidDate)
+        XCTAssertTrue(YearMonthDay(year: 2025, month: 12, day: 31).isValidDate)
+    }
+
+    func test_isValidDate_falseForOutOfRangeDay() {
+        XCTAssertFalse(YearMonthDay(year: 2025, month: 2, day: 30).isValidDate)
+        XCTAssertFalse(YearMonthDay(year: 2025, month: 2, day: 29).isValidDate)
+        XCTAssertFalse(YearMonthDay(year: 2025, month: 4, day: 31).isValidDate)
+        XCTAssertFalse(YearMonthDay(year: 2025, month: 3, day: 0).isValidDate)
+    }
+
+    func test_isValidDate_falseForOutOfRangeMonth() {
+        XCTAssertFalse(YearMonthDay(year: 2025, month: 0, day: 1).isValidDate)
+        XCTAssertFalse(YearMonthDay(year: 2025, month: 13, day: 1).isValidDate)
+    }
+
+    func test_isLeapYear_followsGregorianRule() {
+        XCTAssertTrue(YearMonthDay.isLeapYear(2024))
+        XCTAssertTrue(YearMonthDay.isLeapYear(2000))
+        XCTAssertFalse(YearMonthDay.isLeapYear(2025))
+        XCTAssertFalse(YearMonthDay.isLeapYear(1900))
+        XCTAssertFalse(YearMonthDay.isLeapYear(2100))
+    }
+
+    func test_toDate_doesNotCrashOnNonExistingDate() {
+        // Arrange: 2025-02-30 은 존재하지 않는다.
+        let invalid = YearMonthDay(year: 2025, month: 2, day: 30)
+        let utc = TimeZone(identifier: "UTC")!
+
+        // Act: 예전 구현은 강제 언래핑으로 크래시했다.
+        let date = invalid.toDate(utc)
+
+        // Assert: 그레고리력 규칙대로 3/2 로 보정된다.
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        XCTAssertEqual(YearMonthDay(date, calendar: calendar),
+                       YearMonthDay(year: 2025, month: 3, day: 2))
+    }
+
+    func test_toDate_isNotAffectedByNonGregorianLocale() {
+        // Arrange: DateFormatter 기반 구현은 기기 로케일 달력(예: 일본력)에 흔들렸다.
+        let ymd = YearMonthDay(year: 2025, month: 3, day: 26)
+
+        // Act
+        let date = ymd.toDate(TimeZone(identifier: "UTC")!)
+
+        // Assert
+        XCTAssertEqual(date.timeIntervalSince1970, 1_742_947_200, accuracy: 0.001)
     }
 }
