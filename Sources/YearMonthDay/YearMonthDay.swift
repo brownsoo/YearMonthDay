@@ -44,23 +44,27 @@ public struct YearMonthDay : Hashable {
         return "\(year)-\(month)-\(day)"
     }
     
-    /// 이전 달로 옮긴다. day 는 옮겨진 달의 범위 안에서 유지된다.
-    /// 1970년 1월 이전으로는 넘어가지 않으며, 그 경우 값은 그대로 유지된다.
-    public mutating func prevMonth() {
-        guard let moved = movingMonth(by: -1) else { return }
+    /// 이전 달로 옮긴다.
+    /// - Parameter shouldResetDay: `true` 면 day 를 1로 초기화한다.
+    ///   기본값 `false` 에서는 옮겨진 달의 범위 안에서 day 를 유지한다.
+    /// - Note: 1970년 1월 이전으로는 넘어가지 않으며, 그 경우 값이 그대로 유지된다(day 초기화도 하지 않는다).
+    public mutating func prevMonth(shouldResetDay: Bool = false) {
+        guard let moved = movingMonth(by: -1, shouldResetDay: shouldResetDay) else { return }
         self = moved
     }
 
-    /// 다음 달로 옮긴다. day 는 옮겨진 달의 범위 안에서 유지된다.
-    public mutating func nextMonth() {
-        guard let moved = movingMonth(by: 1) else { return }
+    /// 다음 달로 옮긴다.
+    /// - Parameter shouldResetDay: `true` 면 day 를 1로 초기화한다.
+    ///   기본값 `false` 에서는 옮겨진 달의 범위 안에서 day 를 유지한다.
+    public mutating func nextMonth(shouldResetDay: Bool = false) {
+        guard let moved = movingMonth(by: 1, shouldResetDay: shouldResetDay) else { return }
         self = moved
     }
 
     /// 년월을 `offset` 개월만큼 옮긴 값을 만든다.
     /// day 는 최대한 유지하되 옮겨진 달의 마지막 날을 넘으면 그 날로 맞춘다(1/31 → 2/28).
     /// 1970년 1월보다 앞이면 `nil` 을 돌려준다.
-    private func movingMonth(by offset: Int) -> YearMonthDay? {
+    private func movingMonth(by offset: Int, shouldResetDay: Bool) -> YearMonthDay? {
         // 0-based 월 통산값으로 바꿔 계산하면 연도 이월을 따로 처리할 필요가 없다.
         let totalMonths = year * 12 + (month - 1) + offset
         let movedYear = totalMonths / 12
@@ -72,7 +76,9 @@ public struct YearMonthDay : Hashable {
         return YearMonthDay(
             year: movedYear,
             month: movedMonth,
-            day: min(day, YearMonthDay.lastDay(year: movedYear, month: movedMonth)))
+            day: shouldResetDay
+                ? 1
+                : min(day, YearMonthDay.lastDay(year: movedYear, month: movedMonth)))
     }
 
     /// 다른 날짜의 년월만 비교
@@ -145,17 +151,12 @@ extension YearMonthDay {
     
     /// 해당 날짜 자정의 `Date`.
     /// - Parameter timeZone: 기준 타임존. 생략하면 `TimeZone.current`.
-    /// - Note: 존재하지 않는 날짜(2025-02-30)는 그레고리력 규칙대로 다음 달로 넘겨 보정한다.
-    ///   엄격하게 걸러야 하면 호출 전에 `isValidDate` 를 확인할 것.
-    public func toDate(_ timeZone: TimeZone? = nil) -> Date {
+    /// - Returns: 그레고리력에 존재하지 않는 날짜(2025-02-30)면 `nil`.
+    public func toDate(_ timeZone: TimeZone? = nil) -> Date? {
+        guard isValidDate else { return nil }
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone ?? TimeZone.current
-        let components = DateComponents(year: year, month: month, day: day)
-        // Calendar 는 범위를 넘는 day 를 다음 달로 넘겨 보정한다.
-        // 그래도 만들 수 없는 값이면 같은 달 1일로 떨어뜨려 강제 언래핑 크래시를 피한다.
-        return calendar.date(from: components)
-            ?? calendar.date(from: DateComponents(year: year, month: month, day: 1))
-            ?? Date(timeIntervalSince1970: 0)
+        return calendar.date(from: DateComponents(year: year, month: month, day: day))
     }
 }
 

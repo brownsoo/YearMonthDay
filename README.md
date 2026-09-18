@@ -71,17 +71,26 @@ cursor.prevMonth()   // 2024-12-15
 cursor.nextMonth()   // 2025-01-15
 ```
 
-`day`는 옮겨진 달의 범위 안에서 유지됩니다. 범위를 넘으면 그 달의 마지막 날로 맞춰집니다.
+기본값은 `day` 유지입니다. 옮겨진 달의 범위를 넘으면 그 달의 마지막 날로 맞춰집니다.
 
 ```swift
 var end = YearMonthDay(year: 2025, month: 1, day: 31)
-end.nextMonth()      // 2025-02-28  (평년)
+end.nextMonth()       // 2025-02-28  (평년)
 
 var leap = YearMonthDay(year: 2024, month: 1, day: 31)
 leap.nextMonth()      // 2024-02-29  (윤년)
 ```
 
-`prevMonth()`는 1970년 1월 이전으로는 넘어가지 않으며, 하한에 닿으면 값이 그대로 유지됩니다.
+월 단위 페이징처럼 매번 1일로 리셋해야 하면 `shouldResetDay: true`를 넘기세요.
+
+```swift
+var page = YearMonthDay(year: 2025, month: 1, day: 15)
+page.nextMonth(shouldResetDay: true)   // 2025-02-01
+page.prevMonth(shouldResetDay: true)   // 2025-01-01
+```
+
+`prevMonth()`는 1970년 1월 이전으로는 넘어가지 않으며, 하한에 닿으면 값이 그대로 유지됩니다
+(`shouldResetDay: true`여도 `day`는 바뀌지 않습니다).
 
 ### 달력 계산
 
@@ -96,17 +105,28 @@ YearMonthDay(year: 2024, month: 2, day: 29).isValidDate   // true
 
 ### Date로 변환
 
+`toDate()`는 달력상 존재하지 않는 날짜에 대해 `nil`을 반환합니다.
+
 ```swift
-let date = ymd.toDate()                       // 해당 날짜 00:00, TimeZone.current
-let utc  = ymd.toDate(TimeZone(identifier: "UTC"))
+let ymd = YearMonthDay(year: 2025, month: 3, day: 26)
+
+ymd.toDate()                              // 해당 날짜 00:00, TimeZone.current
+ymd.toDate(TimeZone(identifier: "UTC"))   // UTC 자정
+
+YearMonthDay(year: 2025, month: 2, day: 30).toDate()   // nil
+```
+
+```swift
+guard let date = ymd.toDate() else {
+    // 존재하지 않는 날짜 처리
+    return
+}
 ```
 
 ## 주의사항
 
-- 생성 시 달력상 존재하지 않는 날짜(예: 2025-02-30)를 막지 않습니다. 필요하면 `isValidDate`로
-  직접 검증하세요.
-- `toDate()`는 그런 값도 크래시 없이 처리하지만, 그레고리력 규칙대로 다음 달로 넘겨 보정합니다
-  (2025-02-30 → 2025-03-02).
+- 생성 시 달력상 존재하지 않는 날짜(예: 2025-02-30)를 막지 않습니다. `isValidDate`로 검증하거나
+  `toDate()`의 `nil`을 확인하세요.
 - `toDate()`는 항상 그레고리력으로 계산하므로 기기 로케일 달력의 영향을 받지 않습니다.
 - 한 번 잘린 `day`는 되돌아오지 않습니다. 1/31 → 2/28 → 3/28 순서로 이동합니다.
   원래 날짜를 유지해야 하면 커서와 선택 값을 따로 보관하세요.
