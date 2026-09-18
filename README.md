@@ -10,7 +10,7 @@ Swift Package Manager:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/brownsoo/YearMonthDay.git", from: "1.0.0")
+    .package(url: "https://github.com/brownsoo/YearMonthDay.git", from: "2.0.0")
 ]
 ```
 
